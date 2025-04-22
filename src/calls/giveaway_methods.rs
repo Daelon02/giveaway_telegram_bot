@@ -9,7 +9,8 @@ use teloxide::Bot;
 use teloxide::payloads::{SendMediaGroupSetters, SendMessageSetters};
 use teloxide::prelude::{Message, Requester, UserId};
 use teloxide::types::{
-    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, InputMedia, InputMediaPhoto, PhotoSize,
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, InputMedia, InputMediaPhoto, ParseMode,
+    PhotoSize,
 };
 use tokio::sync::Mutex;
 use url::Url;
@@ -176,7 +177,7 @@ pub async fn started_window(bot: Bot, dialogue: MyDialogue, msg: Message) -> App
 }
 
 pub async fn create_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()> {
-    log::info!("Creating giveaway...");
+    log::info!("Creating giveaway by user {:?}", msg.from);
 
     let photos = match msg.photo() {
         Some(photos) => photos,
@@ -373,17 +374,27 @@ pub async fn end_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
             let winners = giveaway.get_winners(count);
             if !winners.is_empty() {
                 if winners.len() == 1 {
+                    let mention = format!(
+                        "<a href=\"tg://user?id={}\">{}</a>",
+                        winners[0], // числовий id
+                        winners[0]
+                    );
                     bot.send_message(
                         msg.chat.id,
-                        format!("Переможець розіграшу {}: {:?}", uuid, winners[0]),
+                        format!("Переможець розіграшу {}: {:?}", uuid, mention),
                     )
+                    .parse_mode(ParseMode::Html)
                     .await?;
                 } else {
-                    bot.send_message(
-                        msg.chat.id,
-                        format!("Переможці розіграшу {}: {:?}", uuid, winners),
-                    )
-                    .await?;
+                    for winner in winners {
+                        let mention = format!("<a href=\"tg://user?id={}\">{}</a>", winner, winner);
+                        bot.send_message(
+                            msg.chat.id,
+                            format!("Переможець розіграшу {}: {:?}", uuid, mention),
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .await?;
+                    }
                 };
                 general_giveaway_list
                     .entry(msg.from.clone().expect("Cannot get from field").id)

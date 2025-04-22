@@ -18,7 +18,7 @@ use teloxide::types::{ChatKind, KeyboardButton, KeyboardMarkup};
 
 pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescription> {
     let command_handler = teloxide::filter_command::<Command, _>()
-        .filter(|msg: &Message| matches!(msg.chat.kind, ChatKind::Private(_)))
+        .filter(|msg: Message| matches!(msg.chat.kind, ChatKind::Private(_)))
         .branch(
             case![State::Start]
                 .branch(case![Command::Help].endpoint(help))
@@ -27,7 +27,7 @@ pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescr
         .branch(case![Command::Cancel].endpoint(cancel));
 
     let callback_query_handler = Update::filter_message()
-        .filter(|msg: &Message| matches!(msg.chat.kind, ChatKind::Private(_)))
+        .filter(|msg: Message| matches!(msg.chat.kind, ChatKind::Private(_)))
         .branch(case![State::StartedWindow].endpoint(started_window))
         .branch(case![State::CreateGiveaway].endpoint(create_giveaway))
         .branch(case![State::CancelGiveaway].endpoint(cancel_giveaway))
@@ -35,7 +35,7 @@ pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescr
         .branch(case![State::AddGroupId].endpoint(add_group_id));
 
     let message_handler = Update::filter_message()
-        .filter(|msg: &Message| matches!(msg.chat.kind, ChatKind::Private(_)))
+        .filter(|msg: Message| matches!(msg.chat.kind, ChatKind::Private(_)))
         .branch(command_handler)
         .branch(callback_query_handler)
         .branch(dptree::endpoint(invalid_state));
