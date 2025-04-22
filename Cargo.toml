@@ -1,0 +1,17 @@
+[package]
+name = "telegram_bot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.44.2", features = ["full"] }
+log = "0.4.27"
+teloxide = { version = "0.15.0", features = ["macros"] }
+dotenv = "0.15.0"
+chrono = "0.4.40"
+thiserror = "2.0.12"
+fern = "0.7.1"
+colored = "3.0.0"
+uuid = { version = "1.16.0", features = ["v4"] }
+rand = "0.9.1"
+lazy_static = "1.5.0"
