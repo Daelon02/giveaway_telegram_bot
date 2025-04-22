@@ -6,16 +6,13 @@ use teloxide::utils::command::BotCommands;
 pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
 
 #[derive(BotCommands, Clone)]
-#[command(
-    rename_rule = "lowercase",
-    description = "These commands are supported:"
-)]
+#[command(rename_rule = "lowercase", description = "Доступні команди:")]
 pub enum Command {
-    #[command(description = "display this text.")]
+    #[command(description = "Показує доступні команди.")]
     Help,
-    #[command(description = "start the purchase procedure.")]
-    Start,
-    #[command(description = "cancel the purchase procedure.")]
+    #[command(description = "Запускає бота.")]
+    Start(String),
+    #[command(description = "Нічого не робить.")]
     Cancel,
 }
 

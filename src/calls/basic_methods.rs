@@ -1,11 +1,14 @@
+use crate::calls::giveaway_methods::GIVEAWAY_LIST;
 use crate::errors::AppResult;
 use crate::models::{Command, MenuCommands};
 use crate::models::{MyDialogue, State};
 use crate::utils::make_keyboard;
+use std::str::FromStr;
 use teloxide::Bot;
 use teloxide::prelude::*;
 use teloxide::requests::Requester;
 use teloxide::utils::command::BotCommands;
+use uuid::Uuid;
 
 pub async fn help(bot: Bot, msg: Message) -> AppResult<()> {
     bot.send_message(msg.chat.id, Command::descriptions().to_string())
@@ -21,16 +24,48 @@ pub async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()
         MenuCommands::AddGroupId.to_string(),
         MenuCommands::EndGiveaway.to_string(),
     ]);
-    bot.send_message(
-        msg.chat.id,
-        "Привіт! Я бот для створення розіграшів! \n\n \
-                Тут ти можеш зробити розіграші для свого каналу"
-            .to_string(),
-    )
-    .reply_markup(keyboard.resize_keyboard())
-    .await?;
 
-    dialogue.update(State::StartedWindow).await?;
+    let message = msg
+        .text()
+        .expect("Unexpected string")
+        .split('_')
+        .collect::<Vec<&str>>();
+    if message.len() > 1 {
+        log::info!(
+            "User {} clicked on the button",
+            msg.from.clone().expect("Cannot get from field").id
+        );
+        let user_id = message[0].trim_start_matches("/start ");
+        let id = message[1];
+
+        let uuid = Uuid::from_str(id)?;
+        let mut giveaway_list = GIVEAWAY_LIST.lock().await;
+        giveaway_list
+            .entry(UserId(user_id.parse().expect("Invalid UserId")))
+            .and_modify(|giveaway| {
+                giveaway.entry(uuid).and_modify(|giveaway| {
+                    giveaway.add_participant(msg.from.clone().expect("Cannot get from field").id);
+                });
+            });
+
+        log::info!(
+            "User {} successfully take a part in giveaway {}",
+            msg.from.clone().expect("Cannot get from field").id,
+            id
+        );
+    } else {
+        bot.send_message(
+            msg.chat.id,
+            "Привіт! Я бот для створення розіграшів! \n\n \
+                Тут ти можеш зробити розіграші для свого каналу"
+                .to_string(),
+        )
+        .reply_markup(keyboard.resize_keyboard())
+        .await?;
+
+        dialogue.update(State::StartedWindow).await?;
+    }
+
     Ok(())
 }
 

@@ -21,7 +21,7 @@ pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescr
         .branch(
             case![State::Start]
                 .branch(case![Command::Help].endpoint(help))
-                .branch(case![Command::Start].endpoint(start)),
+                .branch(case![Command::Start(start)].endpoint(start)),
         )
         .branch(case![Command::Cancel].endpoint(cancel));
 

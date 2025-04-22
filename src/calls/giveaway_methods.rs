@@ -6,15 +6,22 @@ use std::collections::HashMap;
 use std::collections::hash_map::Iter;
 use std::str::FromStr;
 use teloxide::Bot;
+use teloxide::payloads::{SendMediaGroupSetters, SendMessageSetters};
 use teloxide::prelude::{Message, Requester, UserId};
-use teloxide::types::{InputFile, InputMedia, InputMediaPhoto, PhotoSize};
+use teloxide::types::{
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, InputMedia, InputMediaPhoto, PhotoSize,
+};
 use tokio::sync::Mutex;
+use url::Url;
 use uuid::Uuid;
 
 lazy_static! {
-    static ref GIVEAWAY_LIST: Mutex<HashMap<Uuid, Giveaway>> = Mutex::new(HashMap::new());
+    pub static ref GIVEAWAY_LIST: Mutex<HashMap<UserId, HashMap<Uuid, Giveaway>>> =
+        Mutex::new(HashMap::new());
 }
-struct Giveaway {
+
+#[derive(Clone, Debug)]
+pub struct Giveaway {
     text: String,
     group_id: String,
     photo: Vec<PhotoSize>,
@@ -88,6 +95,16 @@ pub async fn started_window(bot: Bot, dialogue: MyDialogue, msg: Message) -> App
         MenuCommands::CancelGiveaway => {
             let giveaway_list = GIVEAWAY_LIST.lock().await;
 
+            let giveaway_list =
+                match giveaway_list.get(&msg.from.expect("Cannot get from field").id) {
+                    Some(giveaway_list) => giveaway_list,
+                    None => {
+                        bot.send_message(msg.chat.id, "Немає активних розіграшів")
+                            .await?;
+                        return Ok(());
+                    }
+                };
+
             if giveaway_list.is_empty() {
                 bot.send_message(msg.chat.id, "Немає активних розіграшів")
                     .await?;
@@ -100,19 +117,25 @@ pub async fn started_window(bot: Bot, dialogue: MyDialogue, msg: Message) -> App
         }
         MenuCommands::GiveawayList => {
             let giveaway_list = GIVEAWAY_LIST.lock().await;
+            if let Some(giveaway_list) =
+                giveaway_list.get(&msg.from.expect("Cannot get from field").id)
+            {
+                if giveaway_list.is_empty() {
+                    bot.send_message(msg.chat.id, "Немає активних розіграшів")
+                        .await?;
+                } else {
+                    for (id, giveaway) in giveaway_list.iter() {
+                        let photo = get_media(giveaway);
 
-            if giveaway_list.is_empty() {
+                        let text = get_giveaway(id, giveaway);
+                        bot.send_media_group(msg.chat.id, photo).await?;
+                        bot.send_message(msg.chat.id, text).await?;
+                    }
+                }
+            } else {
                 bot.send_message(msg.chat.id, "Немає активних розіграшів")
                     .await?;
-            } else {
-                for (id, giveaway) in giveaway_list.iter() {
-                    let photo = get_media(giveaway);
-
-                    let text = get_giveaway(id, giveaway);
-                    bot.send_media_group(msg.chat.id, photo).await?;
-                    bot.send_message(msg.chat.id, text).await?;
-                }
-            }
+            };
 
             dialogue.update(State::StartedWindow).await?;
         }
@@ -127,7 +150,9 @@ pub async fn started_window(bot: Bot, dialogue: MyDialogue, msg: Message) -> App
         }
         MenuCommands::EndGiveaway => {
             let giveaway_list = GIVEAWAY_LIST.lock().await;
-
+            let giveaway_list = giveaway_list
+                .get(&msg.from.expect("Cannot get from field").id)
+                .expect("Cannot get giveaway list");
             if giveaway_list.is_empty() {
                 bot.send_message(msg.chat.id, "Немає активних розіграшів")
                     .await?;
@@ -178,12 +203,18 @@ pub async fn create_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ap
     let giveaway = Giveaway::new(
         text.to_string(),
         photos.to_vec(),
-        msg.from.expect("Cannot find from").id,
+        msg.from.clone().expect("Cannot find from").id,
     );
 
-    let mut giveaway_list = GIVEAWAY_LIST.lock().await;
+    let mut giveaway_list_with_user = GIVEAWAY_LIST.lock().await;
+    let mut giveaway_list = giveaway_list_with_user
+        .get(&msg.from.clone().expect("Cannot get from field").id)
+        .unwrap_or(&HashMap::new())
+        .clone();
 
     giveaway_list.insert(id, giveaway);
+
+    giveaway_list_with_user.insert(msg.from.expect("Cannot get from field").id, giveaway_list);
 
     bot.send_message(msg.chat.id, "Розіграш створено").await?;
 
@@ -208,15 +239,40 @@ pub async fn add_group_id(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
 
     let channelname = id[0].to_string();
 
-    let id = id[1];
+    let id = Uuid::from_str(id[1])?;
 
     let mut giveaway_list = GIVEAWAY_LIST.lock().await;
+    giveaway_list
+        .entry(msg.from.clone().expect("Cannot get from field").id)
+        .and_modify(|giveaway| {
+            giveaway.entry(id).and_modify(|giveaway| {
+                giveaway.add_group_id(channelname.clone());
+            });
+        });
 
-    let giveaway = giveaway_list
-        .get_mut(&Uuid::from_str(id)?)
-        .expect("Cannot find giveaway");
+    let giveaway_list = giveaway_list
+        .get(&msg.from.clone().expect("Cannot get from field").id)
+        .expect("Cannot get from field");
+    let giveaway = giveaway_list.get(&id).expect("Cannot get from field");
 
-    giveaway.add_group_id(channelname.clone());
+    let url = Url::from_str(&format!(
+        "https://t.me/GiveawayTestRustBot?start={}_{}",
+        msg.from.expect("Cannot get from field").id,
+        id
+    ))?;
+
+    let keyboard =
+        InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::url("Взяти участь", url)]]);
+
+    let photo = get_media(&giveaway.clone());
+
+    bot.send_media_group(channelname.clone(), photo)
+        .chat_id(channelname.clone())
+        .await?;
+
+    bot.send_message(channelname.clone(), "Натисніть кнопку, щоб взяти участь:")
+        .reply_markup(keyboard)
+        .await?;
 
     bot.send_message(
         msg.chat.id,
@@ -234,21 +290,14 @@ pub async fn add_group_id(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
 
 pub async fn cancel_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()> {
     let mut giveaway_list = GIVEAWAY_LIST.lock().await;
+    giveaway_list
+        .entry(msg.from.clone().expect("Cannot get from field").id)
+        .and_modify(|giveaway| {
+            giveaway.remove(&Uuid::from_str(msg.text().unwrap_or_default()).unwrap_or_default());
+        });
 
-    if !giveaway_list.is_empty() {
-        let id = msg.text().unwrap_or_default();
-        if let Ok(uuid) = Uuid::parse_str(id) {
-            if giveaway_list.contains_key(&uuid) {
-                giveaway_list.remove(&uuid);
-                bot.send_message(msg.chat.id, "Розіграш скасовано").await?;
-            } else {
-                bot.send_message(msg.chat.id, "Невірний ID розіграшу")
-                    .await?;
-            }
-        } else {
-            bot.send_message(msg.chat.id, "Невірний формат ID").await?;
-        }
-    }
+    bot.send_message(msg.chat.id, "Розіграш було скасовано")
+        .await?;
 
     dialogue.update(State::StartedWindow).await?;
     Ok(())
@@ -277,14 +326,16 @@ fn get_giveaway(id: &Uuid, giveaway: &Giveaway) -> String {
 
 fn get_media(giveaway: &Giveaway) -> Vec<InputMedia> {
     let photo = giveaway.get_photo();
-    photo
-        .iter()
-        .map(|photo| {
-            InputMedia::Photo(InputMediaPhoto::new(InputFile::file_id(
-                photo.file.id.to_owned(),
-            )))
-        })
-        .collect()
+    let mut vec = vec![InputMedia::Photo(
+        InputMediaPhoto::new(InputFile::file_id(photo[0].file.id.to_owned()))
+            .caption(giveaway.text.to_owned()),
+    )];
+    for i in photo.iter() {
+        vec.push(InputMedia::Photo(InputMediaPhoto::new(InputFile::file_id(
+            i.file.id.to_owned(),
+        ))));
+    }
+    vec
 }
 
 async fn get_giveaway_list(
@@ -311,7 +362,11 @@ pub async fn end_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
     let id_uuid = id[0];
     let count = id[1].parse::<usize>().unwrap_or(1);
 
-    let mut giveaway_list = GIVEAWAY_LIST.lock().await;
+    let mut general_giveaway_list = GIVEAWAY_LIST.lock().await;
+    let mut giveaway_list = general_giveaway_list
+        .get(&msg.from.clone().expect("Cannot get from field").id)
+        .expect("Cannot get from field")
+        .clone();
 
     if let Ok(uuid) = Uuid::parse_str(id_uuid) {
         if let Some(giveaway) = giveaway_list.get_mut(&uuid) {
@@ -330,7 +385,11 @@ pub async fn end_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
                     )
                     .await?;
                 };
-                giveaway_list.remove(&uuid);
+                general_giveaway_list
+                    .entry(msg.from.clone().expect("Cannot get from field").id)
+                    .and_modify(|giveaway_list| {
+                        giveaway_list.remove(&uuid);
+                    });
             } else {
                 bot.send_message(msg.chat.id, "Немає учасників").await?;
             }

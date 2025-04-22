@@ -15,6 +15,8 @@ pub enum AppErrors {
     InMemStorageError(#[from] teloxide::dispatching::dialogue::InMemStorageError),
     #[error(transparent)]
     UuidError(#[from] uuid::Error),
+    #[error(transparent)]
+    UrlError(#[from] url::ParseError),
 }
 
 pub type AppResult<T> = Result<T, AppErrors>;
