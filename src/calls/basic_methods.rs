@@ -44,7 +44,7 @@ pub async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()
             .entry(UserId(user_id.parse().expect("Invalid UserId")))
             .and_modify(|giveaway| {
                 giveaway.entry(uuid).and_modify(|giveaway| {
-                    giveaway.add_participant(msg.from.clone().expect("Cannot get from field").id);
+                    giveaway.add_participant(msg.from.clone().expect("Cannot get from field"));
                 });
             });
 

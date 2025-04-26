@@ -6,12 +6,9 @@ use std::collections::HashMap;
 use std::collections::hash_map::Iter;
 use std::str::FromStr;
 use teloxide::Bot;
-use teloxide::payloads::{SendMediaGroupSetters, SendMessageSetters};
+use teloxide::payloads::{SendMessageSetters, SendPhotoSetters};
 use teloxide::prelude::{Message, Requester, UserId};
-use teloxide::types::{
-    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, InputMedia, InputMediaPhoto, ParseMode,
-    PhotoSize,
-};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, InputFile, ParseMode, User};
 use tokio::sync::Mutex;
 use url::Url;
 use uuid::Uuid;
@@ -25,13 +22,13 @@ lazy_static! {
 pub struct Giveaway {
     text: String,
     group_id: String,
-    photo: Vec<PhotoSize>,
-    owner: UserId,
-    participants: Vec<UserId>,
+    photo: InputFile,
+    owner: User,
+    participants: Vec<User>,
 }
 
 impl Giveaway {
-    pub fn new(text: String, photo: Vec<PhotoSize>, owner: UserId) -> Self {
+    pub fn new(text: String, photo: InputFile, owner: User) -> Self {
         Giveaway {
             text,
             group_id: String::new(),
@@ -46,27 +43,27 @@ impl Giveaway {
     }
 
     #[allow(dead_code)]
-    pub fn add_participant(&mut self, user: UserId) {
+    pub fn add_participant(&mut self, user: User) {
         self.participants.push(user);
     }
 
-    pub fn get_participants(&self) -> &Vec<UserId> {
+    pub fn get_participants(&self) -> &Vec<User> {
         &self.participants
     }
 
-    pub fn get_owner(&self) -> UserId {
-        self.owner
+    pub fn get_owner(&self) -> User {
+        self.owner.clone()
     }
 
     pub fn get_text(&self) -> &String {
         &self.text
     }
 
-    pub fn get_photo(&self) -> &Vec<PhotoSize> {
+    pub fn get_photo(&self) -> &InputFile {
         &self.photo
     }
 
-    pub fn get_winners(&self, count: usize) -> Vec<UserId> {
+    pub fn get_winners(&self, count: usize) -> Vec<User> {
         if self.participants.is_empty() {
             return vec![];
         }
@@ -75,7 +72,7 @@ impl Giveaway {
         let mut indices: Vec<usize> = (0..self.participants.len()).collect();
         indices.shuffle(&mut rng);
         for i in indices.iter().take(count.min(self.participants.len())) {
-            winners.push(self.participants[indices[*i]]);
+            winners.push(self.participants[indices[*i]].clone());
         }
         winners
     }
@@ -126,11 +123,13 @@ pub async fn started_window(bot: Bot, dialogue: MyDialogue, msg: Message) -> App
                         .await?;
                 } else {
                     for (id, giveaway) in giveaway_list.iter() {
-                        let photo = get_media(giveaway);
+                        let photo = giveaway.get_photo().clone();
 
-                        let text = get_giveaway(id, giveaway);
-                        bot.send_media_group(msg.chat.id, photo).await?;
-                        bot.send_message(msg.chat.id, text).await?;
+                        let text = get_giveaway_content(id, giveaway);
+                        bot.send_photo(msg.chat.id, photo)
+                            .caption(text)
+                            .parse_mode(ParseMode::Html)
+                            .await?;
                     }
                 }
             } else {
@@ -180,7 +179,7 @@ pub async fn create_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ap
     log::info!("Creating giveaway by user {:?}", msg.from);
 
     let photos = match msg.photo() {
-        Some(photos) => photos,
+        Some(photos) => photos[3].clone(),
         None => {
             bot.send_message(msg.chat.id, "Треба надіслати фото")
                 .await?;
@@ -203,8 +202,8 @@ pub async fn create_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ap
 
     let giveaway = Giveaway::new(
         text.to_string(),
-        photos.to_vec(),
-        msg.from.clone().expect("Cannot find from").id,
+        InputFile::file_id(photos.file.id),
+        msg.from.clone().expect("Cannot find from"),
     );
 
     let mut giveaway_list_with_user = GIVEAWAY_LIST.lock().await;
@@ -217,7 +216,8 @@ pub async fn create_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ap
 
     giveaway_list_with_user.insert(msg.from.expect("Cannot get from field").id, giveaway_list);
 
-    bot.send_message(msg.chat.id, "Розіграш створено").await?;
+    bot.send_message(msg.chat.id, format!("Розіграш створено, ID: {}", id))
+        .await?;
 
     dialogue.update(State::StartedWindow).await?;
     Ok(())
@@ -265,13 +265,11 @@ pub async fn add_group_id(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
     let keyboard =
         InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::url("Взяти участь", url)]]);
 
-    let photo = get_media(&giveaway.clone());
+    let photo = giveaway.get_photo().clone();
 
-    bot.send_media_group(channelname.clone(), photo)
+    bot.send_photo(channelname.clone(), photo)
         .chat_id(channelname.clone())
-        .await?;
-
-    bot.send_message(channelname.clone(), "Натисніть кнопку, щоб взяти участь:")
+        .caption("Натисніть на кнопку, щоб взяти участь у розіграші")
         .reply_markup(keyboard)
         .await?;
 
@@ -304,39 +302,32 @@ pub async fn cancel_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ap
     Ok(())
 }
 
-fn get_giveaway(id: &Uuid, giveaway: &Giveaway) -> String {
+fn get_giveaway_content(id: &Uuid, giveaway: &Giveaway) -> String {
+    let owner_id = giveaway.get_owner().id;
+    let owner_name = giveaway
+        .get_owner()
+        .username
+        .unwrap_or("учасник".to_string());
+    let mention = format!("<a href=\"tg://user?id={}\">{}</a>", owner_id, owner_name);
+
     if giveaway.group_id.is_empty() {
         format!(
             "ID: {}\nВласник: {}\nТекст: {}\nУчасники: {}",
             id,
-            giveaway.get_owner(),
+            mention,
             giveaway.get_text(),
-            giveaway.get_participants().len()
+            giveaway.get_participants().len(),
         )
     } else {
         format!(
             "ID: {}\nВласник: {}\nТекст: {}\nУчасники: {}\nГрупа: {}",
             id,
-            giveaway.get_owner(),
+            mention,
             giveaway.get_text(),
             giveaway.get_participants().len(),
-            giveaway.group_id
+            giveaway.group_id,
         )
     }
-}
-
-fn get_media(giveaway: &Giveaway) -> Vec<InputMedia> {
-    let photo = giveaway.get_photo();
-    let mut vec = vec![InputMedia::Photo(
-        InputMediaPhoto::new(InputFile::file_id(photo[0].file.id.to_owned()))
-            .caption(giveaway.text.to_owned()),
-    )];
-    for i in photo.iter() {
-        vec.push(InputMedia::Photo(InputMediaPhoto::new(InputFile::file_id(
-            i.file.id.to_owned(),
-        ))));
-    }
-    vec
 }
 
 async fn get_giveaway_list(
@@ -345,10 +336,12 @@ async fn get_giveaway_list(
     chat_id: String,
 ) -> AppResult<()> {
     for (id, giveaway) in giveaway_list {
-        let photo = get_media(giveaway);
-        let text = get_giveaway(id, giveaway);
-        bot.send_media_group(chat_id.clone(), photo).await?;
-        bot.send_message(chat_id.clone(), text).await?;
+        let photo = giveaway.get_photo().clone();
+        let text = get_giveaway_content(id, giveaway);
+        bot.send_photo(chat_id.clone(), photo)
+            .caption(text)
+            .parse_mode(ParseMode::Html)
+            .await?;
     }
     Ok(())
 }
@@ -374,23 +367,37 @@ pub async fn end_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
             let winners = giveaway.get_winners(count);
             if !winners.is_empty() {
                 if winners.len() == 1 {
-                    let mention = format!(
-                        "<a href=\"tg://user?id={}\">{}</a>",
-                        winners[0], // числовий id
-                        winners[0]
-                    );
+                    let owner_id = winners[0].id;
+                    let owner_name = winners[0].clone().username.unwrap_or("учасник".to_string());
+                    let mention =
+                        format!("<a href=\"tg://user?id={}\">{}</a>", owner_id, owner_name);
                     bot.send_message(
                         msg.chat.id,
-                        format!("Переможець розіграшу {}: {:?}", uuid, mention),
+                        format!("Переможець розіграшу {}: {}", uuid, mention),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .await?;
+                    bot.send_message(
+                        giveaway.group_id.clone(),
+                        format!("Переможець розіграшу {}: {}", uuid, mention),
                     )
                     .parse_mode(ParseMode::Html)
                     .await?;
                 } else {
                     for winner in winners {
-                        let mention = format!("<a href=\"tg://user?id={}\">{}</a>", winner, winner);
+                        let owner_id = winner.id;
+                        let owner_name = winner.username.unwrap_or("".to_string());
+                        let mention =
+                            format!("<a href=\"tg://user?id={}\">{}</a>", owner_id, owner_name);
                         bot.send_message(
                             msg.chat.id,
-                            format!("Переможець розіграшу {}: {:?}", uuid, mention),
+                            format!("Переможець розіграшу {}: {}", uuid, mention),
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .await?;
+                        bot.send_message(
+                            giveaway.group_id.clone(),
+                            format!("Переможець розіграшу {}: {}", uuid, mention),
                         )
                         .parse_mode(ParseMode::Html)
                         .await?;
