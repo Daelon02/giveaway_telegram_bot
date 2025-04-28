@@ -31,15 +31,32 @@ pub async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()
         .split('_')
         .collect::<Vec<&str>>();
     if message.len() > 1 {
+        let mut giveaway_list = GIVEAWAY_LIST.lock().await;
+        let user_id = message[0].trim_start_matches("/start ");
+        let id = message[1];
+        let uuid = Uuid::from_str(id)?;
+        
+        let giveaway = giveaway_list.get(&UserId(user_id.parse().expect("Invalid UserId")));
+        
+        if let Some(giveaway) = giveaway {
+            let giveaway = giveaway.get(&uuid);
+            if let Some(giveaway) = giveaway {
+                if giveaway.check_user(msg.from.clone().expect("Cannot get from field")) {
+                    bot.send_message(
+                        msg.chat.id,
+                        "Ти вже взяв участь у розіграші!"
+                            .to_string(),
+                    ).await?;
+                    return Ok(());
+                }
+            }
+        }
+
         log::info!(
             "User {} clicked on the button",
             msg.from.clone().expect("Cannot get from field").id
         );
-        let user_id = message[0].trim_start_matches("/start ");
-        let id = message[1];
 
-        let uuid = Uuid::from_str(id)?;
-        let mut giveaway_list = GIVEAWAY_LIST.lock().await;
         giveaway_list
             .entry(UserId(user_id.parse().expect("Invalid UserId")))
             .and_modify(|giveaway| {
@@ -53,6 +70,12 @@ pub async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()
             msg.from.clone().expect("Cannot get from field").id,
             id
         );
+
+        bot.send_message(
+            msg.chat.id,
+            "Вітаю! Ти успішно взяв участь у розіграші!"
+                .to_string(),
+        ).await?;
     } else {
         bot.send_message(
             msg.chat.id,

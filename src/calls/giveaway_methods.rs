@@ -76,6 +76,10 @@ impl Giveaway {
         }
         winners
     }
+    
+    pub fn check_user(&self, user: User) -> bool {
+        self.participants.iter().any(|u| u.id == user.id)
+    }
 }
 
 pub async fn started_window(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()> {
@@ -179,7 +183,7 @@ pub async fn create_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ap
     log::info!("Creating giveaway by user {:?}", msg.from);
 
     let photos = match msg.photo() {
-        Some(photos) => photos[3].clone(),
+        Some(photos) => photos[0].clone(),
         None => {
             bot.send_message(msg.chat.id, "Треба надіслати фото")
                 .await?;
@@ -238,8 +242,15 @@ pub async fn add_group_id(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
 
     let id = id.split_whitespace().collect::<Vec<&str>>();
 
-    let channelname = id[0].to_string();
+    if id.len() <= 1 {
+        bot.send_message(msg.chat.id, "Треба надіслати ID розіграшу")
+            .await?;
+        dialogue.update(State::StartedWindow).await?;
+        return Ok(());
+    };
 
+    let channelname = id[0].to_string();
+    
     let id = Uuid::from_str(id[1])?;
 
     let mut giveaway_list = GIVEAWAY_LIST.lock().await;
@@ -257,7 +268,7 @@ pub async fn add_group_id(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
     let giveaway = giveaway_list.get(&id).expect("Cannot get from field");
 
     let url = Url::from_str(&format!(
-        "https://t.me/GiveawayTestRustBot?start={}_{}",
+        "https://t.me/ua_giveaway_odn_bot?start={}_{}",
         msg.from.expect("Cannot get from field").id,
         id
     ))?;
@@ -352,6 +363,13 @@ pub async fn end_giveaway(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppRe
     let id = msg.text().unwrap_or_default();
 
     let id = id.split_whitespace().collect::<Vec<&str>>();
+    
+    if id.len() <= 1 {
+        bot.send_message(msg.chat.id, "Треба надіслати ID розіграшу")
+            .await?;
+        dialogue.update(State::StartedWindow).await?;
+        return Ok(());
+    };
 
     let id_uuid = id[0];
     let count = id[1].parse::<usize>().unwrap_or(1);
