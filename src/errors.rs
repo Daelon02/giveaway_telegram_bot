@@ -1,3 +1,4 @@
+use bb8_redis::RedisConnectionManager;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -17,6 +18,17 @@ pub enum AppErrors {
     UuidError(#[from] uuid::Error),
     #[error(transparent)]
     UrlError(#[from] url::ParseError),
+    #[error(transparent)]
+    SerdeError(#[from] serde_json::Error),
+    #[error(transparent)]
+    RedisError(#[from] redis::RedisError),
+    #[error(transparent)]
+    RedisPoolError(
+        #[from]
+        bb8_redis::bb8::RunError<
+            <RedisConnectionManager as bb8_redis::bb8::ManageConnection>::Error,
+        >,
+    ),
 }
 
 pub type AppResult<T> = Result<T, AppErrors>;

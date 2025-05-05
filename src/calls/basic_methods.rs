@@ -1,14 +1,14 @@
-use crate::calls::giveaway_methods::GIVEAWAY_LIST;
+use crate::calls::write_participant;
 use crate::errors::AppResult;
 use crate::models::{Command, MenuCommands};
 use crate::models::{MyDialogue, State};
 use crate::utils::make_keyboard;
-use std::str::FromStr;
+use bb8_redis::RedisConnectionManager;
+use bb8_redis::bb8::Pool;
 use teloxide::Bot;
 use teloxide::prelude::*;
 use teloxide::requests::Requester;
 use teloxide::utils::command::BotCommands;
-use uuid::Uuid;
 
 pub async fn help(bot: Bot, msg: Message) -> AppResult<()> {
     bot.send_message(msg.chat.id, Command::descriptions().to_string())
@@ -16,7 +16,12 @@ pub async fn help(bot: Bot, msg: Message) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()> {
+pub async fn start(
+    bot: Bot,
+    dialogue: MyDialogue,
+    msg: Message,
+    pool: Pool<RedisConnectionManager>,
+) -> AppResult<()> {
     let keyboard = make_keyboard(vec![
         MenuCommands::CreateGiveaway.to_string(),
         MenuCommands::CancelGiveaway.to_string(),
@@ -25,57 +30,17 @@ pub async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()
         MenuCommands::EndGiveaway.to_string(),
     ]);
 
+    let from = msg.from.clone().expect("Cannot get from");
+
     let message = msg
         .text()
         .expect("Unexpected string")
         .split('_')
         .collect::<Vec<&str>>();
+
     if message.len() > 1 {
-        let mut giveaway_list = GIVEAWAY_LIST.lock().await;
-        let user_id = message[0].trim_start_matches("/start ");
-        let id = message[1];
-        let uuid = Uuid::from_str(id)?;
-        
-        let giveaway = giveaway_list.get(&UserId(user_id.parse().expect("Invalid UserId")));
-        
-        if let Some(giveaway) = giveaway {
-            let giveaway = giveaway.get(&uuid);
-            if let Some(giveaway) = giveaway {
-                if giveaway.check_user(msg.from.clone().expect("Cannot get from field")) {
-                    bot.send_message(
-                        msg.chat.id,
-                        "Ти вже взяв участь у розіграші!"
-                            .to_string(),
-                    ).await?;
-                    return Ok(());
-                }
-            }
-        }
-
-        log::info!(
-            "User {} clicked on the button",
-            msg.from.clone().expect("Cannot get from field").id
-        );
-
-        giveaway_list
-            .entry(UserId(user_id.parse().expect("Invalid UserId")))
-            .and_modify(|giveaway| {
-                giveaway.entry(uuid).and_modify(|giveaway| {
-                    giveaway.add_participant(msg.from.clone().expect("Cannot get from field"));
-                });
-            });
-
-        log::info!(
-            "User {} successfully take a part in giveaway {}",
-            msg.from.clone().expect("Cannot get from field").id,
-            id
-        );
-
-        bot.send_message(
-            msg.chat.id,
-            "Вітаю! Ти успішно взяв участь у розіграші!"
-                .to_string(),
-        ).await?;
+        write_participant(pool.clone(), bot.clone(), message, from, msg.chat.id).await?;
+        return Ok(());
     } else {
         bot.send_message(
             msg.chat.id,

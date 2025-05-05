@@ -1,6 +1,7 @@
 use crate::calls::basic_methods::{cancel, help, invalid_state, start};
 use crate::calls::giveaway_methods::{
-    add_group_id, cancel_giveaway, create_giveaway, end_giveaway, started_window,
+    add_group_id, cancel_giveaway, create_giveaway, end_giveaway, list, reroll_or_end,
+    show_participants, started_window,
 };
 use crate::errors::AppResult;
 use crate::models::{Command, State};
@@ -14,7 +15,7 @@ use teloxide::dispatching::{DpHandlerDescription, UpdateFilterExt, dialogue};
 use teloxide::dptree;
 use teloxide::dptree::{Handler, case};
 use teloxide::prelude::{DependencyMap, Message, Update};
-use teloxide::types::{ChatKind, KeyboardButton, KeyboardMarkup};
+use teloxide::types::{ChatKind, KeyboardButton, KeyboardMarkup, User};
 
 pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescription> {
     let command_handler = teloxide::filter_command::<Command, _>()
@@ -32,7 +33,10 @@ pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescr
         .branch(case![State::CreateGiveaway].endpoint(create_giveaway))
         .branch(case![State::CancelGiveaway].endpoint(cancel_giveaway))
         .branch(case![State::EndGiveaway].endpoint(end_giveaway))
-        .branch(case![State::AddGroupId].endpoint(add_group_id));
+        .branch(case![State::AddGroupId].endpoint(add_group_id))
+        .branch(case![State::RerollOrEnd].endpoint(reroll_or_end))
+        .branch(case![State::List].endpoint(list))
+        .branch(case![State::ShowParticipants].endpoint(show_participants));
 
     let message_handler = Update::filter_message()
         .filter(|msg: Message| matches!(msg.chat.kind, ChatKind::Private(_)))
@@ -114,4 +118,13 @@ fn parse_thread_id(id: &ThreadId) -> String {
     })();
 
     parsed.unwrap_or(id_str)
+}
+
+pub fn format_user_mention(user: &User) -> String {
+    if let Some(username) = &user.username {
+        format!("@{}", username)
+    } else {
+        let name = &user.first_name;
+        format!(r#"<a href="tg://user?id={}">{}</a>"#, user.id, name)
+    }
 }
