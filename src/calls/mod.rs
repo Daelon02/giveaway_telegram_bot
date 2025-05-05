@@ -1,13 +1,11 @@
-use crate::calls::models::GiveawaysStorage;
+use crate::calls::models::{Giveaway, GiveawaysStorage};
 use crate::errors::AppResult;
 use bb8_redis::RedisConnectionManager;
 use bb8_redis::bb8::Pool;
-use std::str::FromStr;
 use teloxide::Bot;
-use teloxide::payloads::EditMessageReplyMarkupSetters;
-use teloxide::prelude::Requester;
-use teloxide::types::{ChatId, InlineKeyboardButton, InlineKeyboardMarkup, User};
-use url::Url;
+use teloxide::payloads::{AnswerCallbackQuerySetters, EditMessageReplyMarkupSetters};
+use teloxide::prelude::{CallbackQuery, Requester};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, User};
 use uuid::Uuid;
 
 pub mod basic_methods;
@@ -18,15 +16,12 @@ pub mod types;
 pub async fn write_participant(
     pool: Pool<RedisConnectionManager>,
     bot: Bot,
-    message: Vec<&str>,
+    uuid: Uuid,
+    user_id: String,
     from: User,
-    chat_id: ChatId,
+    q: CallbackQuery,
 ) -> AppResult<()> {
     let mut conn = pool.get().await?;
-
-    let user_id = message[0].trim_start_matches("/start ");
-    let id = message[1];
-    let uuid = Uuid::from_str(id)?;
 
     let user_id: u64 = user_id.parse().expect("Cannot parse user_id from string");
 
@@ -36,7 +31,9 @@ pub async fn write_participant(
 
     if let Some(giveaway) = giveaway {
         if giveaway.check_user(from.clone()) {
-            bot.send_message(chat_id, "Ти вже взяв участь у розіграші!".to_string())
+            bot.answer_callback_query(q.id)
+                .text("Ти вже взяв участь у розіграші!".to_string())
+                .show_alert(true)
                 .await?;
             return Ok(());
         }
@@ -51,54 +48,40 @@ pub async fn write_participant(
         log::info!(
             "User {} successfully take a part in giveaway {}",
             from.id,
-            id
+            uuid
         );
 
-        update_count_in_button(bot.clone(), message, from.clone(), pool.clone(), user_id).await?;
+        let id_for_callback = format!("{}:{}", uuid, user_id);
 
-        bot.send_message(
-            chat_id,
-            "Вітаю! Ти успішно взяв участь у розіграші!".to_string(),
-        )
-        .await?;
+        update_count_in_button(bot.clone(), id_for_callback, giveaway).await?;
+
+        bot.answer_callback_query(q.id)
+            .text("Вітаю! Ти успішно взяв участь у розіграші!".to_string())
+            .show_alert(true)
+            .await?;
     }
     Ok(())
 }
 
 pub async fn update_count_in_button(
     bot: Bot,
-    message: Vec<&str>,
-    from: User,
-    pool: Pool<RedisConnectionManager>,
-    owner_user_id: u64,
+    message: String,
+    giveaway: Giveaway,
 ) -> AppResult<()> {
-    let id = message[1];
-    let uuid = Uuid::from_str(id)?;
+    let count = giveaway.get_participants().len();
+    let text = format!("Взяти участь ({})", count);
 
-    let mut conn = pool.get().await?;
+    let keyboard =
+        InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(text, message)]]);
 
-    let mut giveaway = GiveawaysStorage::new(from.id.0, &mut conn);
+    let message = giveaway
+        .get_message()
+        .clone()
+        .expect("Cannot get message")
+        .clone();
 
-    let giveaway = giveaway.get(uuid).await?;
-
-    if let Some(giveaway) = giveaway {
-        let count = giveaway.get_participants().len();
-        let text = format!("Взяти участь ({})", count);
-
-        let url = dotenv::var("BOT_URL").expect("GIVEAWAY_URL must be set");
-        let url = Url::from_str(&format!("{}{}_{}", url, owner_user_id, id))?;
-
-        let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::url(text, url)]]);
-
-        let message = giveaway
-            .get_message()
-            .clone()
-            .expect("Cannot get message")
-            .clone();
-
-        bot.edit_message_reply_markup(giveaway.group_id, message.id)
-            .reply_markup(keyboard)
-            .await?;
-    }
+    bot.edit_message_reply_markup(giveaway.group_id, message.id)
+        .reply_markup(keyboard)
+        .await?;
     Ok(())
 }

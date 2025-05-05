@@ -1,10 +1,7 @@
-use crate::calls::write_participant;
 use crate::errors::AppResult;
 use crate::models::{Command, MenuCommands};
 use crate::models::{MyDialogue, State};
 use crate::utils::make_keyboard;
-use bb8_redis::RedisConnectionManager;
-use bb8_redis::bb8::Pool;
 use teloxide::Bot;
 use teloxide::prelude::*;
 use teloxide::requests::Requester;
@@ -16,12 +13,7 @@ pub async fn help(bot: Bot, msg: Message) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn start(
-    bot: Bot,
-    dialogue: MyDialogue,
-    msg: Message,
-    pool: Pool<RedisConnectionManager>,
-) -> AppResult<()> {
+pub async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()> {
     let keyboard = make_keyboard(vec![
         MenuCommands::CreateGiveaway.to_string(),
         MenuCommands::CancelGiveaway.to_string(),
@@ -30,29 +22,16 @@ pub async fn start(
         MenuCommands::EndGiveaway.to_string(),
     ]);
 
-    let from = msg.from.clone().expect("Cannot get from");
-
-    let message = msg
-        .text()
-        .expect("Unexpected string")
-        .split('_')
-        .collect::<Vec<&str>>();
-
-    if message.len() > 1 {
-        write_participant(pool.clone(), bot.clone(), message, from, msg.chat.id).await?;
-        return Ok(());
-    } else {
-        bot.send_message(
-            msg.chat.id,
-            "Привіт! Я бот для створення розіграшів! \n\n \
+    bot.send_message(
+        msg.chat.id,
+        "Привіт! Я бот для створення розіграшів! \n\n \
                 Тут ти можеш зробити розіграші для свого каналу"
-                .to_string(),
-        )
-        .reply_markup(keyboard.resize_keyboard())
-        .await?;
+            .to_string(),
+    )
+    .reply_markup(keyboard.resize_keyboard())
+    .await?;
 
-        dialogue.update(State::StartedWindow).await?;
-    }
+    dialogue.update(State::StartedWindow).await?;
 
     Ok(())
 }

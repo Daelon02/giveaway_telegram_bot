@@ -1,6 +1,6 @@
 use crate::calls::models::{Giveaway, GiveawaysStorage};
 use crate::calls::write_participant;
-use crate::errors::AppResult;
+use crate::errors::{AppErrors, AppResult};
 use crate::models::{ListCommands, MenuCommands, MyDialogue, RerollCommands, State};
 use crate::utils::{format_user_mention, make_keyboard};
 use bb8_redis::RedisConnectionManager;
@@ -8,10 +8,9 @@ use bb8_redis::bb8::Pool;
 use std::str::FromStr;
 use teloxide::Bot;
 use teloxide::payloads::{SendMessageSetters, SendPhotoSetters};
-use teloxide::prelude::{ChatId, Message, Requester};
+use teloxide::prelude::{CallbackQuery, ChatId, Message, Requester};
 use teloxide::sugar::request::RequestReplyExt;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, MessageId, ParseMode, User};
-use url::Url;
 use uuid::Uuid;
 
 pub async fn started_window(
@@ -22,78 +21,65 @@ pub async fn started_window(
 ) -> AppResult<()> {
     let menu = MenuCommands::from(msg.text().unwrap_or_default().to_string());
 
-    let from = msg.from.clone().expect("Cannot get from");
-
-    let message = msg
-        .text()
-        .expect("Unexpected string")
-        .split('_')
-        .collect::<Vec<&str>>();
-
-    if message.len() > 1 {
-        write_participant(pool.clone(), bot.clone(), message, from, msg.chat.id).await?;
-        return Ok(());
-    } else {
-        match menu {
-            MenuCommands::CreateGiveaway => {
-                bot.send_message(
-                    msg.chat.id,
-                    "Відправ картинки з дописом щоб створити розіграш",
-                )
+    match menu {
+        MenuCommands::CreateGiveaway => {
+            bot.send_message(
+                msg.chat.id,
+                "Відправ картинки з дописом щоб створити розіграш",
+            )
+            .await?;
+            dialogue.update(State::CreateGiveaway).await?;
+        }
+        MenuCommands::CancelGiveaway => {
+            bot.send_message(msg.chat.id, "Виберіть ID розіграшу, який хочете скасувати")
                 .await?;
-                dialogue.update(State::CreateGiveaway).await?;
-            }
-            MenuCommands::CancelGiveaway => {
-                bot.send_message(msg.chat.id, "Виберіть ID розіграшу, який хочете скасувати")
-                    .await?;
-                get_all_giveaways(bot, msg, pool).await?;
-                dialogue.update(State::CancelGiveaway).await?;
-            }
-            MenuCommands::GiveawayList => {
-                let is_not_empty = get_all_giveaways(bot.clone(), msg.clone(), pool).await?;
+            get_all_giveaways(bot, msg, pool).await?;
+            dialogue.update(State::CancelGiveaway).await?;
+        }
+        MenuCommands::GiveawayList => {
+            let is_not_empty = get_all_giveaways(bot.clone(), msg.clone(), pool).await?;
 
-                if is_not_empty {
-                    let keyboard = make_keyboard(vec![
-                        ListCommands::ShowParticipants.to_string(),
-                        ListCommands::Return.to_string(),
-                    ]);
+            if is_not_empty {
+                let keyboard = make_keyboard(vec![
+                    ListCommands::ShowParticipants.to_string(),
+                    ListCommands::Return.to_string(),
+                ]);
 
-                    bot.send_message(
-                        msg.chat.id,
-                        "Якщо потрібен повний список учасників, натисни кнопку нижче",
-                    )
-                    .reply_markup(keyboard.resize_keyboard())
-                    .await?;
-
-                    dialogue.update(State::List).await?;
-                    return Ok(());
-                }
-
-                dialogue.update(State::StartedWindow).await?;
-            }
-            MenuCommands::AddGroupId => {
                 bot.send_message(
                     msg.chat.id,
-                    "Назву каналу та ID розіграшу через пробіл\n\
+                    "Якщо потрібен повний список учасників, натисни кнопку нижче",
+                )
+                .reply_markup(keyboard.resize_keyboard())
+                .await?;
+
+                dialogue.update(State::List).await?;
+                return Ok(());
+            }
+
+            dialogue.update(State::StartedWindow).await?;
+        }
+        MenuCommands::AddGroupId => {
+            bot.send_message(
+                msg.chat.id,
+                "Назву каналу та ID розіграшу через пробіл\n\
                 Наприклад: @channelname 1234567890",
-                )
-                .await?;
-                dialogue.update(State::AddGroupId).await?;
-            }
-            MenuCommands::EndGiveaway => {
-                bot.send_message(
-                    msg.chat.id,
-                    "Виберіть ID розіграшу, який хочете закінчити\n\
+            )
+            .await?;
+            dialogue.update(State::AddGroupId).await?;
+        }
+        MenuCommands::EndGiveaway => {
+            bot.send_message(
+                msg.chat.id,
+                "Виберіть ID розіграшу, який хочете закінчити\n\
                 та скільки переможців повинно бути\n\
                 приклад: 1234567890 3",
-                )
-                .await?;
-                get_all_giveaways(bot.clone(), msg.clone(), pool.clone()).await?;
-                dialogue.update(State::EndGiveaway).await?;
-            }
-            _ => {
-                dialogue.update(State::StartedWindow).await?;
-            }
+            )
+            .await?;
+            get_all_giveaways(bot.clone(), msg.clone(), pool.clone()).await?;
+            dialogue.update(State::EndGiveaway).await?;
+        }
+        _ => {
+            dialogue.update(State::StartedWindow).await?;
         }
     }
     Ok(())
@@ -202,16 +188,16 @@ pub async fn add_group_id(
 
     giveaway.add_group_id(channelname.clone());
 
-    let url = dotenv::var("BOT_URL").expect("GIVEAWAY_URL must be set");
-    let url = Url::from_str(&format!(
-        "{}{}_{}",
-        url,
+    let url = format!(
+        "join_giveaway:{}:{}",
         msg.from.expect("Cannot get from field").id,
         id
-    ))?;
+    );
 
-    let keyboard =
-        InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::url("Взяти участь", url)]]);
+    let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+        "Взяти участь",
+        url,
+    )]]);
 
     let m = bot
         .send_photo(channelname.clone(), photo)
@@ -401,13 +387,10 @@ pub async fn get_winner_or_winners(
             )
             .parse_mode(ParseMode::Html)
             .await?;
-            bot.send_message(
-                group_id,
-                format!("Переможець розіграшу {}: {}", uuid, mention),
-            )
-            .reply_to(reply_to)
-            .parse_mode(ParseMode::Html)
-            .await?;
+            bot.send_message(group_id, format!("Переможець розіграшу: {}", mention))
+                .reply_to(reply_to)
+                .parse_mode(ParseMode::Html)
+                .await?;
         } else {
             let mut message_with_winners = String::from("Переможці розіграшу:\n");
 
@@ -575,5 +558,38 @@ pub async fn show_participants(
         .await?;
 
     dialogue.update(State::StartedWindow).await?;
+    Ok(())
+}
+
+pub async fn handle_callback_from_button(
+    bot: Bot,
+    q: CallbackQuery,
+    pool: Pool<RedisConnectionManager>,
+) -> AppResult<()> {
+    if let Some(data) = &q.data {
+        if data.starts_with("join_giveaway:") {
+            let parser_string = data.replace("join_giveaway:", "");
+            let user = q.from.clone();
+
+            let mut parts = parser_string.splitn(2, ':');
+            let user_id_str = parts
+                .next()
+                .ok_or(AppErrors::StringError("Missing user_id".to_string()))?;
+            let uuid_str = parts
+                .next()
+                .ok_or(AppErrors::StringError("Missing uuid".to_string()))?;
+
+            write_participant(
+                pool.clone(),
+                bot.clone(),
+                Uuid::from_str(uuid_str)?,
+                user_id_str.to_string(),
+                user,
+                q,
+            )
+            .await?;
+        }
+    }
+
     Ok(())
 }

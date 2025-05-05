@@ -29,6 +29,8 @@ pub enum AppErrors {
             <RedisConnectionManager as bb8_redis::bb8::ManageConnection>::Error,
         >,
     ),
+    #[error("{0}")]
+    StringError(String),
 }
 
 pub type AppResult<T> = Result<T, AppErrors>;

@@ -1,7 +1,7 @@
 use crate::calls::basic_methods::{cancel, help, invalid_state, start};
 use crate::calls::giveaway_methods::{
-    add_group_id, cancel_giveaway, create_giveaway, end_giveaway, list, reroll_or_end,
-    show_participants, started_window,
+    add_group_id, cancel_giveaway, create_giveaway, end_giveaway, handle_callback_from_button,
+    list, reroll_or_end, show_participants, started_window,
 };
 use crate::errors::AppResult;
 use crate::models::{Command, State};
@@ -27,7 +27,7 @@ pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescr
         )
         .branch(case![Command::Cancel].endpoint(cancel));
 
-    let callback_query_handler = Update::filter_message()
+    let subcommand_handler = Update::filter_message()
         .filter(|msg: Message| matches!(msg.chat.kind, ChatKind::Private(_)))
         .branch(case![State::StartedWindow].endpoint(started_window))
         .branch(case![State::CreateGiveaway].endpoint(create_giveaway))
@@ -38,13 +38,17 @@ pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescr
         .branch(case![State::List].endpoint(list))
         .branch(case![State::ShowParticipants].endpoint(show_participants));
 
+    let callback_handler = Update::filter_callback_query().endpoint(handle_callback_from_button);
+
     let message_handler = Update::filter_message()
         .filter(|msg: Message| matches!(msg.chat.kind, ChatKind::Private(_)))
         .branch(command_handler)
-        .branch(callback_query_handler)
+        .branch(subcommand_handler)
         .branch(dptree::endpoint(invalid_state));
 
-    dialogue::enter::<Update, InMemStorage<State>, State, _>().branch(message_handler)
+    dialogue::enter::<Update, InMemStorage<State>, State, _>()
+        .branch(message_handler)
+        .branch(callback_handler)
 }
 
 pub fn make_keyboard(menu_buttons: Vec<String>) -> KeyboardMarkup {
