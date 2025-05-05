@@ -37,7 +37,6 @@ pub async fn write_participant(
                 .await?;
             return Ok(());
         }
-        log::info!("User {} clicked on the button", from.id);
 
         let mut giveaway = giveaway.clone();
 

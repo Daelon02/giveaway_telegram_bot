@@ -579,6 +579,8 @@ pub async fn handle_callback_from_button(
                 .next()
                 .ok_or(AppErrors::StringError("Missing uuid".to_string()))?;
 
+            log::info!("User {} clicked on the button", user.id);
+
             write_participant(
                 pool.clone(),
                 bot.clone(),
