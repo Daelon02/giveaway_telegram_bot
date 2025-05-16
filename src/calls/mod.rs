@@ -30,11 +30,23 @@ pub async fn write_participant(
     let giveaway = storage.get(uuid).await?;
 
     if let Some(giveaway) = giveaway {
+        log::info!("Giveaway {} found", uuid);
         if giveaway.check_user(from.clone()) {
+            log::info!(
+                "User {} already take a part in this giveaway {}",
+                user_id,
+                uuid
+            );
+
+            let timestamp = chrono::Utc::now().timestamp();
+            let id_for_callback = format!("j:{}:{}:{}", user_id, uuid, timestamp);
+
             bot.answer_callback_query(q.id)
                 .text("Ти вже взяв участь у розіграші!".to_string())
                 .show_alert(true)
                 .await?;
+
+            update_count_in_button(bot.clone(), id_for_callback, giveaway).await?;
             return Ok(());
         }
 
@@ -50,28 +62,31 @@ pub async fn write_participant(
             uuid
         );
 
-        let id_for_callback = format!("{}:{}", uuid, user_id);
-
-        update_count_in_button(bot.clone(), id_for_callback, giveaway).await?;
+        let timestamp = chrono::Utc::now().timestamp();
+        let id_for_callback = format!("j:{}:{}:{}", user_id, uuid, timestamp);
 
         bot.answer_callback_query(q.id)
             .text("Вітаю! Ти успішно взяв участь у розіграші!".to_string())
             .show_alert(true)
             .await?;
+
+        update_count_in_button(bot.clone(), id_for_callback, giveaway).await?;
     }
     Ok(())
 }
 
 pub async fn update_count_in_button(
     bot: Bot,
-    message: String,
+    callback_data: String,
     giveaway: Giveaway,
 ) -> AppResult<()> {
     let count = giveaway.get_participants().len();
     let text = format!("Взяти участь ({})", count);
 
-    let keyboard =
-        InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(text, message)]]);
+    let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+        text,
+        callback_data,
+    )]]);
 
     let message = giveaway
         .get_message()
@@ -82,5 +97,6 @@ pub async fn update_count_in_button(
     bot.edit_message_reply_markup(giveaway.group_id, message.id)
         .reply_markup(keyboard)
         .await?;
+
     Ok(())
 }

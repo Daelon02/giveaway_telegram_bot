@@ -47,8 +47,8 @@ pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescr
         .branch(dptree::endpoint(invalid_state));
 
     dialogue::enter::<Update, InMemStorage<State>, State, _>()
-        .branch(message_handler)
         .branch(callback_handler)
+        .branch(message_handler)
 }
 
 pub fn make_keyboard(menu_buttons: Vec<String>) -> KeyboardMarkup {

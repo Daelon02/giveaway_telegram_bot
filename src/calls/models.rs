@@ -5,7 +5,7 @@ use redis::{FromRedisValue, ToRedisArgs};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use teloxide::prelude::Message;
-use teloxide::types::{InputFile, User};
+use teloxide::types::{InputFile, User, UserId};
 use uuid::Uuid;
 
 pub type GiveawaysStorage<'a> = RHashMap<'a, MultiplexedConnection, u64, Uuid, Giveaway>;
@@ -80,7 +80,8 @@ impl Giveaway {
     }
 
     pub fn check_user(&self, user: User) -> bool {
-        self.participants.iter().any(|u| u.id == user.id)
+        let user_ids: Vec<UserId> = self.participants.iter().map(|x| x.id).collect();
+        user_ids.contains(&user.id)
     }
 }
 

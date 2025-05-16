@@ -7,7 +7,7 @@ use bb8_redis::RedisConnectionManager;
 use bb8_redis::bb8::Pool;
 use std::str::FromStr;
 use teloxide::Bot;
-use teloxide::payloads::{SendMessageSetters, SendPhotoSetters};
+use teloxide::payloads::{AnswerCallbackQuerySetters, SendMessageSetters, SendPhotoSetters};
 use teloxide::prelude::{CallbackQuery, ChatId, Message, Requester};
 use teloxide::sugar::request::RequestReplyExt;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, MessageId, ParseMode, User};
@@ -188,11 +188,7 @@ pub async fn add_group_id(
 
     giveaway.add_group_id(channelname.clone());
 
-    let url = format!(
-        "join_giveaway:{}:{}",
-        msg.from.expect("Cannot get from field").id,
-        id
-    );
+    let url = format!("j:{}:{}", msg.from.expect("Cannot get from field").id, id);
 
     let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
         "Взяти участь",
@@ -566,15 +562,20 @@ pub async fn handle_callback_from_button(
     q: CallbackQuery,
     pool: Pool<RedisConnectionManager>,
 ) -> AppResult<()> {
+    log::info!("Handling callback from button by callback query...");
     if let Some(data) = &q.data {
-        if data.starts_with("join_giveaway:") {
-            let parser_string = data.replace("join_giveaway:", "");
+        if data.starts_with("j:") {
+            let parser_string = data.replace("j:", "");
             let user = q.from.clone();
 
-            let mut parts = parser_string.splitn(2, ':');
+            log::info!("User data: {:?}", parser_string);
+
+            let mut parts = parser_string.splitn(3, ':');
+
             let user_id_str = parts
                 .next()
                 .ok_or(AppErrors::StringError("Missing user_id".to_string()))?;
+
             let uuid_str = parts
                 .next()
                 .ok_or(AppErrors::StringError("Missing uuid".to_string()))?;
@@ -591,6 +592,11 @@ pub async fn handle_callback_from_button(
             )
             .await?;
         }
+    } else {
+        bot.answer_callback_query(q.id)
+            .show_alert(true)
+            .text("Не вдалось знайти розіграш")
+            .await?;
     }
 
     Ok(())
