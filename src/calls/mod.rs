@@ -73,7 +73,10 @@ pub async fn write_participant(
             .await?;
 
         update_count_in_button(bot.clone(), id_for_callback, giveaway).await?;
+    } else {
+        log::error!("Giveaway {} not found", uuid);
     }
+
     Ok(())
 }
 
