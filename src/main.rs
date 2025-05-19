@@ -21,10 +21,12 @@ type MyStorage = Arc<ErasedStorage<State>>;
 async fn main() -> AppResult<()> {
     dotenv().ok();
     init_logging()?;
-    log::info!("Starting fitness bot...");
+    log::info!("Starting giveaway bot...");
 
     let bot = Bot::new(dotenv::var("TELOXIDE_TOKEN")?);
     let redis_url = dotenv::var("REDIS_URL")?;
+    
+    log::info!("Connecting to Redis at {}", redis_url);
 
     let redis_pool = Pool::builder()
         .max_size(10)
