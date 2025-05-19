@@ -585,12 +585,15 @@ pub async fn handle_callback_from_button(
     q: CallbackQuery,
     pool: Pool<RedisConnectionManager>,
 ) -> AppResult<()> {
-    log::info!("Handling callback from button by callback query...");
     if let Some(data) = &q.data {
         if data.starts_with("j:") {
             let parser_string = data.replace("j:", "");
             let user = q.from.clone();
 
+            log::info!(
+                "Handling callback from button by callback query by user {:?}",
+                q.from
+            );
             log::info!("User data: {:?}", parser_string);
 
             let mut parts = parser_string.splitn(3, ':');
