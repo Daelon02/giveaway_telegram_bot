@@ -10,7 +10,7 @@ use log::{Level, LevelFilter};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::thread::ThreadId;
-use teloxide::dispatching::dialogue::InMemStorage;
+use teloxide::dispatching::dialogue::ErasedStorage;
 use teloxide::dispatching::{DpHandlerDescription, UpdateFilterExt, dialogue};
 use teloxide::dptree;
 use teloxide::dptree::{Handler, case};
@@ -46,7 +46,7 @@ pub fn schema() -> Handler<'static, DependencyMap, AppResult<()>, DpHandlerDescr
         .branch(subcommand_handler)
         .branch(dptree::endpoint(invalid_state));
 
-    dialogue::enter::<Update, InMemStorage<State>, State, _>()
+    dialogue::enter::<Update, ErasedStorage<State>, State, _>()
         .branch(callback_handler)
         .branch(message_handler)
 }

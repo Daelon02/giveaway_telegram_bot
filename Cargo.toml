@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 tokio = { version = "1.44.2", features = ["full"] }
 log = "0.4.27"
-teloxide = { version = "0.15.0", features = ["macros", "rand"] }
+teloxide = { version = "0.15.0", features = ["macros", "rand", "redis-storage", "bincode-serializer"] }
 dotenv = "0.15.0"
 chrono = "0.4.40"
 thiserror = "2.0.12"

@@ -31,6 +31,8 @@ pub enum AppErrors {
     ),
     #[error("{0}")]
     StringError(String),
+    #[error(transparent)]
+    BoxedError(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
 pub type AppResult<T> = Result<T, AppErrors>;

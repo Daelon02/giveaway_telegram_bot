@@ -1,4 +1,5 @@
 use crate::calls::models::{Giveaway, GiveawaysStorage};
+use crate::consts::USER_GIVEAWAY_KEY;
 use crate::errors::AppResult;
 use bb8_redis::RedisConnectionManager;
 use bb8_redis::bb8::Pool;
@@ -25,7 +26,8 @@ pub async fn write_participant(
 
     let user_id: u64 = user_id.parse().expect("Cannot parse user_id from string");
 
-    let mut storage = GiveawaysStorage::new(user_id, &mut conn);
+    let key = format!("{}{}", USER_GIVEAWAY_KEY, user_id);
+    let mut storage = GiveawaysStorage::new(key, &mut conn);
 
     let giveaway = storage.get(uuid).await?;
 

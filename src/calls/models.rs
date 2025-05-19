@@ -8,7 +8,7 @@ use teloxide::prelude::Message;
 use teloxide::types::{InputFile, User, UserId};
 use uuid::Uuid;
 
-pub type GiveawaysStorage<'a> = RHashMap<'a, MultiplexedConnection, u64, Uuid, Giveaway>;
+pub type GiveawaysStorage<'a> = RHashMap<'a, MultiplexedConnection, String, Uuid, Giveaway>;
 
 #[derive(Serialize, Deserialize)]
 pub struct GiveawaysList(HashMap<Uuid, Giveaway>);

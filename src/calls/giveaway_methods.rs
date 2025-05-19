@@ -1,5 +1,6 @@
 use crate::calls::models::{Giveaway, GiveawaysStorage};
 use crate::calls::write_participant;
+use crate::consts::USER_GIVEAWAY_KEY;
 use crate::errors::{AppErrors, AppResult};
 use crate::models::{ListCommands, MenuCommands, MyDialogue, RerollCommands, State};
 use crate::utils::{format_user_mention, make_keyboard};
@@ -125,7 +126,9 @@ pub async fn create_giveaway(
 
     let user_id = msg.from.clone().expect("Cannot get from field").id.0;
 
-    let mut giveaway_list = GiveawaysStorage::new(user_id, &mut conn);
+    let key = format!("giveaway:{}", user_id);
+
+    let mut giveaway_list = GiveawaysStorage::new(key, &mut conn);
 
     giveaway_list.insert(id, giveaway, None).await?;
 
@@ -171,7 +174,8 @@ pub async fn add_group_id(
 
     let from = msg.from.clone().expect("Cannot get from field").id.0;
 
-    let mut storage = GiveawaysStorage::new(from, &mut conn);
+    let key = format!("{}{}", USER_GIVEAWAY_KEY, from);
+    let mut storage = GiveawaysStorage::new(key, &mut conn);
 
     let giveaway = storage.get(id).await?;
 
@@ -226,15 +230,23 @@ pub async fn cancel_giveaway(
     msg: Message,
     pool: Pool<RedisConnectionManager>,
 ) -> AppResult<()> {
+    let giveaway_id = msg.text().unwrap_or_default();
+    log::info!(
+        "Cancelling giveaway by user {:?}, giveaway id {}",
+        msg.from,
+        giveaway_id
+    );
     let mut conn = pool.get().await?;
 
-    let mut storage = GiveawaysStorage::new(
-        msg.from.clone().expect("Cannot get from field").id.0,
-        &mut conn,
+    let key = format!(
+        "{}{}",
+        USER_GIVEAWAY_KEY,
+        msg.from.clone().expect("Cannot get from field").id.0
     );
+    let mut storage = GiveawaysStorage::new(key, &mut conn);
 
     storage
-        .remove(Uuid::from_str(msg.text().unwrap_or_default()).unwrap_or_default())
+        .remove(Uuid::from_str(giveaway_id).unwrap_or_default())
         .await?;
 
     bot.send_message(msg.chat.id, "Розіграш було закінчено")
@@ -278,8 +290,6 @@ pub async fn end_giveaway(
     msg: Message,
     pool: Pool<RedisConnectionManager>,
 ) -> AppResult<()> {
-    log::info!("Ending giveaway...");
-
     let id = msg.text().unwrap_or_default();
 
     let id = id.split_whitespace().collect::<Vec<&str>>();
@@ -294,12 +304,21 @@ pub async fn end_giveaway(
     let id_uuid = id[0];
     let count = id[1].parse::<usize>().unwrap_or(1);
 
+    log::info!(
+        "Ending giveaway by user {:?}, giveaway_id {}",
+        msg.from,
+        id_uuid
+    );
+
     let mut conn = pool.get().await?;
 
-    let mut storage = GiveawaysStorage::new(
-        msg.from.clone().expect("Cannot get from field").id.0,
-        &mut conn,
+    let key = format!(
+        "{}{}",
+        USER_GIVEAWAY_KEY,
+        msg.from.clone().expect("Cannot get from field").id.0
     );
+
+    let mut storage = GiveawaysStorage::new(key, &mut conn);
 
     let uuid = Uuid::from_str(id_uuid).expect("Cannot get giveaway ID");
 
@@ -340,10 +359,12 @@ pub async fn get_all_giveaways(
     pool: Pool<RedisConnectionManager>,
 ) -> AppResult<bool> {
     let mut conn = pool.get().await?;
-    let mut storage = GiveawaysStorage::new(
-        msg.from.clone().expect("Cannot get from field").id.0,
-        &mut conn,
+    let key = format!(
+        "{}{}",
+        USER_GIVEAWAY_KEY,
+        msg.from.clone().expect("Cannot get from field").id.0
     );
+    let mut storage = GiveawaysStorage::new(key, &mut conn);
 
     let giveaways = storage.get_all().await?;
 
@@ -499,10 +520,12 @@ pub async fn show_participants(
 
     let mut conn = pool.get().await?;
 
-    let mut storage = GiveawaysStorage::new(
-        msg.from.clone().expect("Cannot get from field").id.0,
-        &mut conn,
+    let key = format!(
+        "{}{}",
+        USER_GIVEAWAY_KEY,
+        msg.from.clone().expect("Cannot get from field").id.0
     );
+    let mut storage = GiveawaysStorage::new(key, &mut conn);
 
     let id = msg.text().unwrap_or_default();
 

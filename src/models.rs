@@ -1,9 +1,10 @@
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use teloxide::dispatching::dialogue::InMemStorage;
+use teloxide::dispatching::dialogue::ErasedStorage;
 use teloxide::prelude::Dialogue;
 use teloxide::utils::command::BotCommands;
 
-pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
+pub type MyDialogue = Dialogue<State, ErasedStorage<State>>;
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "Доступні команди:")]
@@ -16,7 +17,7 @@ pub enum Command {
     Cancel,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub enum State {
     #[default]
     Start,
