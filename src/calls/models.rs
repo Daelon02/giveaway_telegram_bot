@@ -90,7 +90,7 @@ impl FromRedisValue for GiveawaysList {
             redis::RedisError::from((
                 redis::ErrorKind::TypeError,
                 "Failed to deserialize Giveaway",
-                format!("{:?}", e),
+                format!("{e:?}"),
             ))
         })
     }
@@ -113,7 +113,7 @@ impl FromRedisValue for Giveaway {
             redis::RedisError::from((
                 redis::ErrorKind::TypeError,
                 "Failed to deserialize Giveaway",
-                format!("{:?}", e),
+                format!("{e:?}"),
             ))
         })
     }

@@ -1,6 +1,6 @@
 use crate::calls::models::{Giveaway, GiveawaysStorage};
 use crate::calls::write_participant;
-use crate::consts::USER_GIVEAWAY_KEY;
+use crate::consts::{FILENAME, USER_GIVEAWAY_KEY};
 use crate::errors::{AppErrors, AppResult};
 use crate::models::{ListCommands, MenuCommands, MyDialogue, State};
 use crate::utils::make_keyboard;
@@ -69,17 +69,6 @@ pub async fn started_window(
             .await?;
             dialogue.update(State::AddGroupId).await?;
         }
-        MenuCommands::EndGiveaway => {
-            bot.send_message(
-                msg.chat.id,
-                "Виберіть ID розіграшу, який хочете закінчити\n\
-                та скільки переможців повинно бути\n\
-                приклад: 1234567890 3",
-            )
-            .await?;
-            get_all_giveaways(bot.clone(), msg.clone(), pool.clone()).await?;
-            dialogue.update(State::EndGiveaway).await?;
-        }
         _ => {
             dialogue.update(State::StartedWindow).await?;
         }
@@ -127,13 +116,13 @@ pub async fn create_giveaway(
 
     let user_id = msg.from.clone().expect("Cannot get from field").id.0;
 
-    let key = format!("giveaway:{}", user_id);
+    let key = format!("giveaway:{user_id}");
 
     let mut giveaway_list = GiveawaysStorage::new(key, &mut conn);
 
     giveaway_list.insert(id, giveaway, None).await?;
 
-    bot.send_message(msg.chat.id, format!("Розіграш створено, ID: {}", id))
+    bot.send_message(msg.chat.id, format!("Розіграш створено, ID: {id}"))
         .await?;
 
     dialogue.update(State::StartedWindow).await?;
@@ -175,7 +164,7 @@ pub async fn add_group_id(
 
     let from = msg.from.clone().expect("Cannot get from field").id.0;
 
-    let key = format!("{}{}", USER_GIVEAWAY_KEY, from);
+    let key = format!("{USER_GIVEAWAY_KEY}{from}");
     let mut storage = GiveawaysStorage::new(key, &mut conn);
 
     let giveaway = storage.get(id).await?;
@@ -263,7 +252,7 @@ fn get_giveaway_content(id: &Uuid, giveaway: &Giveaway) -> String {
         .get_owner()
         .username
         .unwrap_or("учасник".to_string());
-    let mention = format!("<a href=\"tg://user?id={}\">{}</a>", owner_id, owner_name);
+    let mention = format!("<a href=\"tg://user?id={owner_id}\">{owner_name}</a>");
 
     if giveaway.group_id.is_empty() {
         format!(
@@ -336,7 +325,6 @@ pub async fn list(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()>
                 MenuCommands::CancelGiveaway.to_string(),
                 MenuCommands::GiveawayList.to_string(),
                 MenuCommands::AddGroupId.to_string(),
-                MenuCommands::EndGiveaway.to_string(),
             ]);
 
             bot.send_message(msg.chat.id, "Повернення назад")
@@ -362,7 +350,6 @@ pub async fn show_participants(
         MenuCommands::CancelGiveaway.to_string(),
         MenuCommands::GiveawayList.to_string(),
         MenuCommands::AddGroupId.to_string(),
-        MenuCommands::EndGiveaway.to_string(),
     ]);
 
     let mut conn = pool.get().await?;
@@ -406,18 +393,16 @@ pub async fn show_participants(
         return Ok(());
     }
 
-    let filename = "participants.txt";
-
-    let mut file = File::create(filename)?;
+    let mut file = File::create(FILENAME)?;
     let mut lines = vec![];
 
-    for (_, participant) in participants.iter().enumerate() {
+    for participant in participants.iter() {
         let owner_name = participant
             .username
             .clone()
             .unwrap_or_else(|| participant.first_name.clone());
 
-        lines.push(format!("{owner_name}"));
+        lines.push(owner_name.to_string());
     }
 
     for (i, line) in lines.iter().enumerate() {
@@ -430,7 +415,7 @@ pub async fn show_participants(
     )
     .await?;
 
-    remove_file(filename)?;
+    remove_file(FILENAME)?;
 
     dialogue.update(State::StartedWindow).await?;
     Ok(())
@@ -450,7 +435,7 @@ pub async fn handle_callback_from_button(
                 "Handling callback from button by callback query by user {:?}",
                 q.from
             );
-            log::info!("User data: {:?}", parser_string);
+            log::info!("User data: {parser_string:?}");
 
             let mut parts = parser_string.splitn(3, ':');
 

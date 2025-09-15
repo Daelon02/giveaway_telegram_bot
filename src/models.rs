@@ -36,7 +36,6 @@ pub enum MenuCommands {
     CancelGiveaway,
     GiveawayList,
     AddGroupId,
-    EndGiveaway,
     DoNothing,
 }
 
@@ -47,7 +46,6 @@ impl Display for MenuCommands {
             MenuCommands::CancelGiveaway => write!(f, "Скасувати розіграш"),
             MenuCommands::GiveawayList => write!(f, "Список розіграшів"),
             MenuCommands::AddGroupId => write!(f, "Додати розіграш в групу"),
-            MenuCommands::EndGiveaway => write!(f, "Закінчити розіграш"),
             MenuCommands::DoNothing => write!(f, "Do nothing"),
         }
     }
@@ -60,32 +58,7 @@ impl From<String> for MenuCommands {
             "Скасувати розіграш" => MenuCommands::CancelGiveaway,
             "Список розіграшів" => MenuCommands::GiveawayList,
             "Додати розіграш в групу" => MenuCommands::AddGroupId,
-            "Закінчити розіграш" => MenuCommands::EndGiveaway,
             _ => MenuCommands::DoNothing,
-        }
-    }
-}
-
-pub enum RerollCommands {
-    Reroll,
-    End,
-}
-
-impl Display for RerollCommands {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RerollCommands::Reroll => write!(f, "Реролл"),
-            RerollCommands::End => write!(f, "Закінчити"),
-        }
-    }
-}
-
-impl From<String> for RerollCommands {
-    fn from(s: String) -> Self {
-        match s.as_str() {
-            "Реролл" => RerollCommands::Reroll,
-            "Закінчити" => RerollCommands::End,
-            _ => RerollCommands::End,
         }
     }
 }

@@ -26,7 +26,7 @@ async fn main() -> AppResult<()> {
     let bot = Bot::new(dotenv::var("TELOXIDE_TOKEN")?);
     let redis_url = dotenv::var("REDIS_URL")?;
 
-    log::info!("Connecting to Redis at {}", redis_url);
+    log::info!("Connecting to Redis at {redis_url}");
 
     let redis_pool = Pool::builder()
         .max_size(10)

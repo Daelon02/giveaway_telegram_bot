@@ -105,13 +105,13 @@ pub fn init_logging() -> AppResult<()> {
 
     main_logging_dispatch.apply()?;
 
-    log::info!("Logging level {} enabled", log_level);
+    log::info!("Logging level {log_level} enabled");
 
     Ok(())
 }
 
 fn parse_thread_id(id: &ThreadId) -> String {
-    let id_str = format!("{:?}", id);
+    let id_str = format!("{id:?}");
 
     let parsed = (|| {
         let start_idx = id_str.find('(')?;

@@ -26,22 +26,18 @@ pub async fn write_participant(
 
     let user_id: u64 = user_id.parse().expect("Cannot parse user_id from string");
 
-    let key = format!("{}{}", USER_GIVEAWAY_KEY, user_id);
+    let key = format!("{USER_GIVEAWAY_KEY}{user_id}");
     let mut storage = GiveawaysStorage::new(key, &mut conn);
 
     let giveaway = storage.get(uuid).await?;
 
     if let Some(giveaway) = giveaway {
-        log::info!("Giveaway {} found", uuid);
+        log::info!("Giveaway {uuid} found");
         if giveaway.check_user(from.clone()) {
-            log::info!(
-                "User {} already take a part in this giveaway {}",
-                user_id,
-                uuid
-            );
+            log::info!("User {user_id} already take a part in this giveaway {uuid}");
 
             let timestamp = chrono::Utc::now().timestamp();
-            let id_for_callback = format!("j:{}:{}:{}", user_id, uuid, timestamp);
+            let id_for_callback = format!("j:{user_id}:{uuid}:{timestamp}");
 
             bot.answer_callback_query(q.id)
                 .text("Ти вже взяв участь у розіграші!".to_string())
@@ -65,7 +61,7 @@ pub async fn write_participant(
         );
 
         let timestamp = chrono::Utc::now().timestamp();
-        let id_for_callback = format!("j:{}:{}:{}", user_id, uuid, timestamp);
+        let id_for_callback = format!("j:{user_id}:{uuid}:{timestamp}");
 
         bot.answer_callback_query(q.id)
             .text("Вітаю! Ти успішно взяв участь у розіграші!".to_string())
@@ -74,7 +70,7 @@ pub async fn write_participant(
 
         update_count_in_button(bot.clone(), id_for_callback, giveaway).await?;
     } else {
-        log::error!("Giveaway {} not found", uuid);
+        log::error!("Giveaway {uuid} not found");
     }
 
     Ok(())
@@ -86,7 +82,7 @@ pub async fn update_count_in_button(
     giveaway: Giveaway,
 ) -> AppResult<()> {
     let count = giveaway.get_participants().len();
-    let text = format!("Взяти участь ({})", count);
+    let text = format!("Взяти участь ({count})");
 
     let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
         text,
