@@ -409,11 +409,12 @@ pub async fn show_participants(
         write!(file, "{}. {}", i + 1, line)?;
     }
 
-    bot.send_document(
-        msg.chat.id,
-        teloxide::types::InputFile::file("participants.txt"),
-    )
-    .await?;
+    bot.send_message(msg.chat.id, "Ось список учасників")
+        .reply_markup(keyboard.resize_keyboard())
+        .await?;
+
+    bot.send_document(msg.chat.id, teloxide::types::InputFile::file(FILENAME))
+        .await?;
 
     remove_file(FILENAME)?;
 
