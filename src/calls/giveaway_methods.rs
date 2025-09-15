@@ -414,25 +414,18 @@ pub async fn show_participants(
     let mut lines = vec![];
 
     for (index, participant) in participants.iter().enumerate() {
-        let owner_id = participant.id;
         let owner_name = participant
             .username
             .clone()
             .unwrap_or_else(|| participant.first_name.clone());
 
-        let mention = format!("<a href=\"tg://user?id={}\">{}</a>", owner_id, owner_name);
-        message_with_participants.push_str(&format!("{}. {}\n", index + 1, mention));
+        message_with_participants.push_str(&format!("{}. {}\n", index + 1, owner_name));
         lines.push(format!("{mention}"));
     }
 
     for (i, line) in lines.iter().enumerate() {
         write!(file, "{}. {}", i + 1, line)?;
     }
-
-    bot.send_message(msg.chat.id, message_with_participants)
-        .parse_mode(ParseMode::Html)
-        .reply_markup(keyboard.resize_keyboard())
-        .await?;
 
     bot.send_document(
         msg.chat.id,
