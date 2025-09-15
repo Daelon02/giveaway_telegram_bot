@@ -406,7 +406,7 @@ pub async fn show_participants(
     }
 
     for (i, line) in lines.iter().enumerate() {
-        write!(file, "{}. {}", i + 1, line)?;
+        write!(file, "{}. {} /n", i + 1, line)?;
     }
 
     bot.send_message(msg.chat.id, "Ось список учасників")
