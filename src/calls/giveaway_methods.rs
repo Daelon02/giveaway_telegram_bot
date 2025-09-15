@@ -406,7 +406,7 @@ pub async fn show_participants(
         return Ok(());
     }
 
-    let filename = "output.txt";
+    let filename = "participants.txt";
 
     let mut file = File::create(filename)?;
     let mut lines = vec![];
