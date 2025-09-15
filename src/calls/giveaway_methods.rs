@@ -6,7 +6,7 @@ use crate::models::{ListCommands, MenuCommands, MyDialogue, State};
 use crate::utils::make_keyboard;
 use bb8_redis::RedisConnectionManager;
 use bb8_redis::bb8::Pool;
-use std::fs::File;
+use std::fs::{File, remove_file};
 use std::io::Write;
 use std::str::FromStr;
 use teloxide::Bot;
@@ -408,7 +408,9 @@ pub async fn show_participants(
 
     let mut message_with_participants = String::from("Учасники розіграшу:\n");
 
-    let mut file = File::create("output.txt")?;
+    let filename = "output.txt";
+
+    let mut file = File::create(filename)?;
     let mut lines = vec![];
 
     for (index, participant) in participants.iter().enumerate() {
@@ -437,6 +439,8 @@ pub async fn show_participants(
         teloxide::types::InputFile::file("participants.txt"),
     )
     .await?;
+
+    remove_file(filename)?;
 
     dialogue.update(State::StartedWindow).await?;
     Ok(())
