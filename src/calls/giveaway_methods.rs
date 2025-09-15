@@ -2,16 +2,17 @@ use crate::calls::models::{Giveaway, GiveawaysStorage};
 use crate::calls::write_participant;
 use crate::consts::USER_GIVEAWAY_KEY;
 use crate::errors::{AppErrors, AppResult};
-use crate::models::{ListCommands, MenuCommands, MyDialogue, RerollCommands, State};
-use crate::utils::{format_user_mention, make_keyboard};
+use crate::models::{ListCommands, MenuCommands, MyDialogue, State};
+use crate::utils::make_keyboard;
 use bb8_redis::RedisConnectionManager;
 use bb8_redis::bb8::Pool;
+use std::fs::File;
+use std::io::Write;
 use std::str::FromStr;
 use teloxide::Bot;
 use teloxide::payloads::{AnswerCallbackQuerySetters, SendMessageSetters, SendPhotoSetters};
-use teloxide::prelude::{CallbackQuery, ChatId, Message, Requester};
-use teloxide::sugar::request::RequestReplyExt;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, MessageId, ParseMode, User};
+use teloxide::prelude::{CallbackQuery, Message, Requester};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 use uuid::Uuid;
 
 pub async fn started_window(
@@ -284,75 +285,6 @@ fn get_giveaway_content(id: &Uuid, giveaway: &Giveaway) -> String {
     }
 }
 
-pub async fn end_giveaway(
-    bot: Bot,
-    dialogue: MyDialogue,
-    msg: Message,
-    pool: Pool<RedisConnectionManager>,
-) -> AppResult<()> {
-    let id = msg.text().unwrap_or_default();
-
-    let id = id.split_whitespace().collect::<Vec<&str>>();
-
-    if id.len() <= 1 {
-        bot.send_message(msg.chat.id, "Треба надіслати ID розіграшу")
-            .await?;
-        dialogue.update(State::StartedWindow).await?;
-        return Ok(());
-    };
-
-    let id_uuid = id[0];
-    let count = id[1].parse::<usize>().unwrap_or(1);
-
-    log::info!(
-        "Ending giveaway by user {:?}, giveaway_id {}",
-        msg.from,
-        id_uuid
-    );
-
-    let mut conn = pool.get().await?;
-
-    let key = format!(
-        "{}{}",
-        USER_GIVEAWAY_KEY,
-        msg.from.clone().expect("Cannot get from field").id.0
-    );
-
-    let mut storage = GiveawaysStorage::new(key, &mut conn);
-
-    let uuid = Uuid::from_str(id_uuid).expect("Cannot get giveaway ID");
-
-    let giveaway = storage.get(uuid).await?;
-
-    if let Some(giveaway) = giveaway {
-        let winners = giveaway.get_winners(count);
-        get_winner_or_winners(
-            winners,
-            uuid,
-            bot.clone(),
-            msg.chat.id,
-            giveaway.group_id,
-            dialogue,
-            giveaway.message.expect("Cannot get message").id,
-        )
-        .await?;
-        let keyboard = make_keyboard(vec![
-            RerollCommands::End.to_string(),
-            RerollCommands::Reroll.to_string(),
-        ]);
-
-        bot.send_message(msg.chat.id, "Якщо ти хочеш остаточно завершити або зробити перевибір переможця/переможців розіграш\n нажми відповідну кнопку")
-            .reply_markup(keyboard.resize_keyboard()).await?;
-        return Ok(());
-    } else {
-        bot.send_message(msg.chat.id, "Невірний ID розіграшу")
-            .await?;
-    }
-
-    dialogue.update(State::StartedWindow).await?;
-    Ok(())
-}
-
 pub async fn get_all_giveaways(
     bot: Bot,
     msg: Message,
@@ -384,91 +316,6 @@ pub async fn get_all_giveaways(
     }
 
     Ok(true)
-}
-
-pub async fn get_winner_or_winners(
-    winners: Vec<User>,
-    uuid: Uuid,
-    bot: Bot,
-    chat_id: ChatId,
-    group_id: String,
-    dialogue: MyDialogue,
-    reply_to: MessageId,
-) -> AppResult<()> {
-    if !winners.is_empty() {
-        if winners.len() == 1 {
-            let mention = format_user_mention(&winners[0]);
-            bot.send_message(
-                chat_id,
-                format!("Переможець розіграшу {}: {}", uuid, mention),
-            )
-            .parse_mode(ParseMode::Html)
-            .await?;
-            bot.send_message(group_id, format!("Переможець розіграшу: {}", mention))
-                .reply_to(reply_to)
-                .parse_mode(ParseMode::Html)
-                .await?;
-        } else {
-            let mut message_with_winners = String::from("Переможці розіграшу:\n");
-
-            let mut index = 1;
-
-            for winner in winners {
-                let mention = format_user_mention(&winner);
-                message_with_winners.push_str(&format!("{}. {}\n", index, mention));
-                index += 1;
-            }
-            bot.send_message(group_id.clone(), message_with_winners)
-                .reply_to(reply_to)
-                .parse_mode(ParseMode::Html)
-                .await?;
-        };
-        dialogue.update(State::RerollOrEnd).await?;
-    } else {
-        bot.send_message(chat_id, "Немає учасників").await?;
-    }
-    Ok(())
-}
-
-pub async fn reroll_or_end(
-    bot: Bot,
-    dialogue: MyDialogue,
-    msg: Message,
-    pool: Pool<RedisConnectionManager>,
-) -> AppResult<()> {
-    log::info!("Rerolling or ending giveaway...");
-
-    let keyboard = make_keyboard(vec![
-        MenuCommands::CreateGiveaway.to_string(),
-        MenuCommands::CancelGiveaway.to_string(),
-        MenuCommands::GiveawayList.to_string(),
-        MenuCommands::AddGroupId.to_string(),
-        MenuCommands::EndGiveaway.to_string(),
-    ]);
-
-    let menu = RerollCommands::from(msg.text().unwrap_or_default().to_string());
-
-    match menu {
-        RerollCommands::End => {
-            bot.send_message(msg.chat.id, "Відправ ID розіграшу, який хочете закінчити")
-                .reply_markup(keyboard.resize_keyboard())
-                .await?;
-            dialogue.update(State::CancelGiveaway).await?;
-            Ok(())
-        }
-        RerollCommands::Reroll => {
-            bot.send_message(
-                msg.chat.id,
-                "Виберіть ID розіграшу, який хочете перевибрати\n\
-                та скільки переможців повинно бути\n\
-                приклад: 1234567890 3",
-            )
-            .await?;
-            get_all_giveaways(bot.clone(), msg.clone(), pool.clone()).await?;
-            dialogue.update(State::EndGiveaway).await?;
-            Ok(())
-        }
-    }
 }
 
 pub async fn list(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()> {
@@ -561,20 +408,35 @@ pub async fn show_participants(
 
     let mut message_with_participants = String::from("Учасники розіграшу:\n");
 
+    let mut file = File::create("output.txt")?;
+    let mut lines = vec![];
+
     for (index, participant) in participants.iter().enumerate() {
         let owner_id = participant.id;
         let owner_name = participant
             .username
             .clone()
             .unwrap_or_else(|| participant.first_name.clone());
+
         let mention = format!("<a href=\"tg://user?id={}\">{}</a>", owner_id, owner_name);
         message_with_participants.push_str(&format!("{}. {}\n", index + 1, mention));
+        lines.push(format!("{mention}"));
+    }
+
+    for (i, line) in lines.iter().enumerate() {
+        write!(file, "{}. {}", i + 1, line)?;
     }
 
     bot.send_message(msg.chat.id, message_with_participants)
         .parse_mode(ParseMode::Html)
         .reply_markup(keyboard.resize_keyboard())
         .await?;
+
+    bot.send_document(
+        msg.chat.id,
+        teloxide::types::InputFile::file("participants.txt"),
+    )
+    .await?;
 
     dialogue.update(State::StartedWindow).await?;
     Ok(())

@@ -1,5 +1,4 @@
 use crate::calls::types::RHashMap;
-use rand::prelude::SliceRandom;
 use redis::aio::MultiplexedConnection;
 use redis::{FromRedisValue, ToRedisArgs};
 use serde::{Deserialize, Serialize};
@@ -66,17 +65,6 @@ impl Giveaway {
 
     pub fn set_message(&mut self, message: Message) {
         self.message = Some(message);
-    }
-
-    pub fn get_winners(&self, count: usize) -> Vec<User> {
-        if self.participants.is_empty() {
-            return vec![];
-        }
-        let mut rng = rand::rng();
-        let mut participants = self.participants.clone();
-        let (winners, _) = participants.partial_shuffle(&mut rng, count);
-        log::info!("[Giveaway] Winners: {:?}", winners);
-        winners.to_vec()
     }
 
     pub fn check_user(&self, user: User) -> bool {

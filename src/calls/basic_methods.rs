@@ -19,7 +19,6 @@ pub async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> AppResult<()
         MenuCommands::CancelGiveaway.to_string(),
         MenuCommands::GiveawayList.to_string(),
         MenuCommands::AddGroupId.to_string(),
-        MenuCommands::EndGiveaway.to_string(),
     ]);
 
     bot.send_message(
