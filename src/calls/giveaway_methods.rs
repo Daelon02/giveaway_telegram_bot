@@ -406,21 +406,18 @@ pub async fn show_participants(
         return Ok(());
     }
 
-    let mut message_with_participants = String::from("Учасники розіграшу:\n");
-
     let filename = "output.txt";
 
     let mut file = File::create(filename)?;
     let mut lines = vec![];
 
-    for (index, participant) in participants.iter().enumerate() {
+    for (_, participant) in participants.iter().enumerate() {
         let owner_name = participant
             .username
             .clone()
             .unwrap_or_else(|| participant.first_name.clone());
 
-        message_with_participants.push_str(&format!("{}. {}\n", index + 1, owner_name));
-        lines.push(format!("{mention}"));
+        lines.push(format!("{owner_name}"));
     }
 
     for (i, line) in lines.iter().enumerate() {
